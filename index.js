@@ -1,49 +1,36 @@
-const express = require("express");
-const bodyparser = require("body-parser");
-const cors = require("cors");
-const mysql = require("mysql2");
-const { check, validationResult } = require("express-validator");
-
 const bcrypt = require("bcrypt");
-const JWT = require("jsonwebtoken");
+const express = require("express");
+const { check, validationResult } = require("express-validator");
+const jwt = require("jsonwebtoken");
+const mysql = require("mysql2/promise"); // Use promise-based MySQL to handle async/await
 
 require("dotenv").config();
 
 const app = express();
 
-app.use(cors());
-app.use(bodyparser.json());
+app.use(express.json());
 
-const db = mysql.createConnection({
+const dbConfig = {
   host: "sql.freedb.tech",
   user: "freedb_malithlekamge",
   password: "e?7fbmQzPbSNM2s",
   database: "freedb_passwardz",
   port: 3306,
-});
-
-// Check database connection
-db.connect((err) => {
-  if (err) {
-    console.error(err, "db connection error");
-  } else {
-    console.log("Database connected");
-  }
-});
-
-app.use(express.json());
-
-const checkEmailExists = (email, callback) => {
-  const query = `SELECT * FROM user WHERE email = ?`;
-  db.query(query, [email], (err, result) => {
-    if (err) {
-      console.error(err);
-      callback(err, null);
-    } else {
-      callback(null, result);
-    }
-  });
 };
+
+// Create a pool to manage database connections
+const pool = mysql.createPool(dbConfig);
+
+// Middleware to handle database errors
+app.use((req, res, next) => {
+  pool.getConnection().then((connection) => {
+    req.dbConnection = connection;
+    next();
+  }).catch((err) => {
+    console.error("Database connection error:", err);
+    res.status(500).json({ error: "Database connection error" });
+  });
+});
 
 app.post(
   `/signup`,
@@ -66,70 +53,51 @@ app.post(
         });
       }
 
-      checkEmailExists(email, async (err, result) => {
-        if (err) {
-          console.error(err);
-          return res.status(500).json({ error: "Database error" });
-        }
+      const [rows] = await req.dbConnection.execute(
+        "SELECT * FROM user WHERE email = ?",
+        [email]
+      );
 
-        if (result.length > 0) {
-          return res.status(409).json({ error: "Email already exists" });
-        }
+      if (rows.length > 0) {
+        return res.status(409).json({ error: "Email already exists" });
+      }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
-        // Create a new SQL query to insert the user data
-        let insertQuery = `INSERT INTO user (email, username, password) VALUES (?, ?, ?)`;
+      const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Execute the SQL query to insert the data into the database
-        db.query(
-          insertQuery,
-          [email, username, hashedPassword],
-          (err, result) => {
-            if (err) {
-              console.error(err);
-              return res.status(500).json({ error: "Error inserting data into the database" });
-            }
-            console.log("User registered:", result);
+      await req.dbConnection.execute(
+        "INSERT INTO user (email, username, password) VALUES (?, ?, ?)",
+        [email, username, hashedPassword]
+      );
 
-            const token = JWT.sign(
-              {
-                email,
-              },
-              process.env.MY_SECRET_KEY,
-              { expiresIn: 3600000 }
-            );
-            res.json({
-              token,
-            });
-          }
-        );
+      const token = jwt.sign(
+        {
+          email,
+        },
+        process.env.MY_SECRET_KEY,
+        { expiresIn: "1h" }
+      );
+      res.json({
+        token,
       });
     } catch (error) {
       console.error(error);
-      res.status(500).json({ error: "Error hashing password" });
+      res.status(500).json({ error: "Error registering user" });
+    } finally {
+      req.dbConnection.release(); // Release the database connection
     }
   }
 );
-
-// Login route
 
 app.post(`/logins`, async (req, res) => {
   const { password, email } = req.body;
 
   try {
-    const query = "SELECT * FROM user ";
-    const result = await queryDatabase(query, [email, password]);
+    const [rows] = await req.dbConnection.execute(
+      "SELECT * FROM user WHERE email = ?",
+      [email]
+    );
 
-    const users = result.map((userRow) => {
-      const { email: userEmail, password: userPassword } = userRow;
-      return { email: userEmail, password: userPassword };
-    });
-
-    let user = users.find((user) => {
-      return user.email === email;
-    });
-
-    if (!user) {
+    if (rows.length === 0) {
       return res.status(400).json({
         errors: {
           message: "Invalid email.",
@@ -140,9 +108,10 @@ app.post(`/logins`, async (req, res) => {
       });
     }
 
-    let isMatch = await bcrypt.compare(password.trim(), user.password.trim());
+    const user = rows[0];
+    const isMatch = await bcrypt.compare(password, user.password);
 
-    if (isMatch === false) {
+    if (!isMatch) {
       return res.status(400).json({
         errors: {
           message: "Invalid password.",
@@ -153,12 +122,12 @@ app.post(`/logins`, async (req, res) => {
       });
     }
 
-    const token = await JWT.sign(
+    const token = jwt.sign(
       {
         email,
       },
       process.env.MY_SECRET_KEY,
-      { expiresIn: 3600000 }
+      { expiresIn: "1h" }
     );
     res.json({
       message: {
@@ -172,23 +141,12 @@ app.post(`/logins`, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal server error" });
+  } finally {
+    req.dbConnection.release(); // Release the database connection
   }
 });
-
-// Helper function to query the database
-function queryDatabase(query, params) {
-  return new Promise((resolve, reject) => {
-    db.query(query, params, (err, result) => {
-      if (err) {
-        console.error(err);
-        reject(err);
-      } else {
-        resolve(result);
-      }
-    });
-  });
-}
 
 app.listen(3000, () => {
   console.log("Server is running on port 3000");
 });
+

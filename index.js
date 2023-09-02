@@ -12,7 +12,6 @@ require("dotenv").config();
 
 const app = express();
 
-
 app.use(cors());
 app.use(bodyparser.json());
 
@@ -24,13 +23,13 @@ const db = mysql.createConnection({
   port: 3306,
 });
 
-
-//check database connection
+// Check database connection
 db.connect((err) => {
   if (err) {
-    console.log(err, "db connection err");
+    console.error(err, "db connection error");
+  } else {
+    console.log("Database connected");
   }
-  console.log("database connected");
 });
 
 app.use(express.json());
@@ -39,7 +38,7 @@ const checkEmailExists = (email, callback) => {
   const query = `SELECT * FROM user WHERE email = ?`;
   db.query(query, [email], (err, result) => {
     if (err) {
-      console.log(err);
+      console.error(err);
       callback(err, null);
     } else {
       callback(null, result);
@@ -59,17 +58,18 @@ app.post(
   async (req, res) => {
     const { password, email, username } = req.body;
 
-    const errors = validationResult(req);
-
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        errors: errors.array(),
-      });
-    }
-
     try {
+      const errors = validationResult(req);
+
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          errors: errors.array(),
+        });
+      }
+
       checkEmailExists(email, async (err, result) => {
         if (err) {
+          console.error(err);
           return res.status(500).json({ error: "Database error" });
         }
 
@@ -87,10 +87,8 @@ app.post(
           [email, username, hashedPassword],
           (err, result) => {
             if (err) {
-              console.log(err);
-              return res
-                .status(500)
-                .json({ error: "Error inserting data into the database" });
+              console.error(err);
+              return res.status(500).json({ error: "Error inserting data into the database" });
             }
             console.log("User registered:", result);
 
@@ -108,17 +106,16 @@ app.post(
         );
       });
     } catch (error) {
-      console.log(error);
+      console.error(error);
       res.status(500).json({ error: "Error hashing password" });
     }
   }
 );
 
-//login route
+// Login route
 
 app.post(`/logins`, async (req, res) => {
   const { password, email } = req.body;
-  console.log(password, email);
 
   try {
     const query = "SELECT * FROM user ";
@@ -128,10 +125,8 @@ app.post(`/logins`, async (req, res) => {
       const { email: userEmail, password: userPassword } = userRow;
       return { email: userEmail, password: userPassword };
     });
-    console.log(users);
 
     let user = users.find((user) => {
-      console.log("fdsfsd", user);
       return user.email === email;
     });
 
@@ -146,11 +141,7 @@ app.post(`/logins`, async (req, res) => {
       });
     }
 
-    console.log("database eken enne", password);
-    console.log("request eken enne ", user.password);
-
     let isMatch = await bcrypt.compare(password.trim(), user.password.trim());
-    console.log(isMatch);
 
     if (isMatch === false) {
       return res.status(400).json({
@@ -180,7 +171,7 @@ app.post(`/logins`, async (req, res) => {
       token,
     });
   } catch (err) {
-    console.log(err);
+    console.error(err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -190,6 +181,7 @@ function queryDatabase(query, params) {
   return new Promise((resolve, reject) => {
     db.query(query, params, (err, result) => {
       if (err) {
+        console.error(err);
         reject(err);
       } else {
         resolve(result);
@@ -198,128 +190,6 @@ function queryDatabase(query, params) {
   });
 }
 
-//update data
-
-app.put(`/user/:id`, (req, res) => {
-  console.log("up updated data");
-
-  let gID = req.params.id;
-
-  let eMail = req.body.email;
-  let userName = req.body.username;
-  let passWord = req.body.password;
-
-  let qr = `UPDATE user SET fullname = '${eMail}', email = '${userName}', mobile = '${passWord}'
-      WHERE id = ${gID}`;
-
-  db.query(qr, (err, result) => {
-    if (err) {
-      console.log(err);
-    }
-    res.send({
-      message: "Data Updated",
-    });
-  });
+app.listen(3000, () => {
+  console.log("Server is running on port 3000");
 });
-
-//get all data
-app.get("/user", (req, res) => {
-  let qr = `SELECT * FROM user`;
-  db.query(qr, (err, result) => {
-    if (err) {
-      console.log(err, "errs");
-    }
-    if (result.length > 0) {
-      res.send({
-        message: "all user data",
-        data: result,
-      });
-    }
-  });
-});
-
-//get single data
-
-app.get(`/user/:id`, (req, res) => {
-  let gID = req.params.id;
-  let qr = `select * from user where id = ${gID}`;
-
-  db.query(qr, (err, result) => {
-    if (err) {
-      console.log(err);
-    }
-    if (result.length > 0) {
-      res.send({
-        message: "get single data",
-        data: result,
-      });
-    } else {
-      res.send({
-        message: "data not found",
-      });
-    }
-  });
-});
-
-//post data
-
-app.post("/user", (req, res) => {
-  console.log("post data");
-  //   console.log(req.body, "createdata");
-
-  let eMail = req.body.email;
-  let userName = req.body.username;
-  let passWord = req.body.password;
-
-  let qr = `insert into user(email,username,password)
-              values('${eMail}','${userName}', '${passWord}')`;
-
-  db.query(qr, (err, result) => {
-    if (err) {
-      console.log(err);
-    }
-    console.log(result, "result");
-    res.send({
-      message: "data inserted",
-    });
-  });
-});
-
-//delete single data
-app.delete(`/user/:id`, (req, res) => {
-  let qid = req.params.id;
-  let qr = `delete from user where id = '${qid}' `;
-  db.query(qr, (err, result) => {
-    if (err) {
-      console.log(err);
-    }
-    res.send({
-      message: "data deleted",
-    });
-  });
-});
-
-
-
-// const model = require("./path/to/your/model"); // Replace with the actual path
-
-// // API endpoint for prediction
-// app.post("/predict", async (req, res) => {
-//   try {
-
-//     // Extract input data from the request body
-//     const input_data = req.body.input_data; // Replace with your input data format
-
-//     // Perform prediction using the model
-//     const prediction = model.predict(input_data);
-
-//     // Return the prediction result as a response
-//     res.json({ prediction });
-//   } catch (error) {
-//     console.error("Error during prediction:", error);
-//     res.status(500).json({ error: "Error during prediction" });
-//   }
-// });
-
-
-app.listen(3000, () => {});

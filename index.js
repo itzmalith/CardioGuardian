@@ -2,8 +2,7 @@ const bcrypt = require("bcrypt");
 const express = require("express");
 const { check, validationResult } = require("express-validator");
 const jwt = require("jsonwebtoken");
-const mysql = require("mysql2/promise"); // Use promise-based MySQL to handle async/await
-
+const mysql = require("mysql2/promise");
 require("dotenv").config();
 
 const app = express();
@@ -18,25 +17,24 @@ const dbConfig = {
   port: 3306,
 };
 
-// Create a pool to manage database connections
 const pool = mysql.createPool(dbConfig);
 
-// Middleware to handle database errors
-app.use((req, res, next) => {
-  pool.getConnection().then((connection) => {
+app.use(async (req, res, next) => { // Changed to async
+  try {
+    const connection = await pool.getConnection();
     req.dbConnection = connection;
     next();
-  }).catch((err) => {
+  } catch (err) {
     console.error("Database connection error:", err);
     res.status(500).json({ error: "Database connection error" });
-  });
+  }
 });
 
 app.post(
-  `/signup`,
+  "/signup",
   [
-    check("email", "please provide a valid email").isEmail(),
-    check("password", "password should be between 4 to 8 characters").isLength({
+    check("email", "Please provide a valid email").isEmail(), // Changed error message capitalization
+    check("password", "Password should be between 4 to 8 characters").isLength({
       min: 4,
       max: 8,
     }),
@@ -88,7 +86,7 @@ app.post(
   }
 );
 
-app.post(`/logins`, async (req, res) => {
+app.post("/logins", async (req, res) => {
   const { password, email } = req.body;
 
   try {
@@ -131,7 +129,7 @@ app.post(`/logins`, async (req, res) => {
     );
     res.json({
       message: {
-        TEXT: "login success.",
+        TEXT: "Login success.",
       },
       status: {
         code: "0",
@@ -149,4 +147,3 @@ app.post(`/logins`, async (req, res) => {
 app.listen(3000, () => {
   console.log("Server is running on port 3000");
 });
-

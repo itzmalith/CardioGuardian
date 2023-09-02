@@ -16,12 +16,13 @@ app.use(cors());
 app.use(bodyparser.json());
 
 const db = mysql.createConnection({
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "passwardz",
+  host: "sql.freedb.tech",
+  user: "freedb_malithlekamge",
+  password: "e?7fbmQzPbSNM2s",
+  database: "freedb_passwardz",
   port: 3306,
 });
+
 
 //check database connection
 db.connect((err) => {

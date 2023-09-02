@@ -5,7 +5,6 @@ const mysql = require("mysql2");
 const { check, validationResult } = require("express-validator");
 
 const bcrypt = require("bcrypt");
-
 const JWT = require("jsonwebtoken");
 
 require("dotenv").config();
